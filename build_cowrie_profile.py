@@ -15,7 +15,6 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from datetime import datetime
 
@@ -179,6 +178,25 @@ def produce_cowrie_cfg(outcfg, profile_name, host_info):
     print(f"[+] Cowrie config written: {outcfg}")
 
 
+def copy_files_to_fs(fs_root, file_paths):
+    """Copy files to the filesystem root for Cowrie honeyfs, preserving relative paths."""
+    copied_files = []
+    for src_path in file_paths:
+        src = Path(src_path)
+        if src.exists():
+            # Create the destination path relative to fs_root
+            dst = Path(fs_root) / src_path.lstrip('/')
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(src, dst)
+                copied_files.append(str(dst.relative_to(fs_root)))
+                print(f"[+] Copied {src} to {dst}")
+            except Exception as e:
+                print(f"[!] Failed to copy {src}: {e}")
+    
+    return copied_files
+
+
 def generate_cowrie_filesystem(createfs_bin, outdir, hostfs, profile_name):
     Path(outdir).mkdir(parents=True, exist_ok=True)
     # createfs_bin is the path to the createfs executable
@@ -238,11 +256,18 @@ def main():
     produce_cowrie_cfg(outcfg, args.profile, host_info)
 
     generate_cowrie_filesystem(createfs_bin, str(outdir / "fs"), args.hostfs, args.profile)
+    
+    # Copy OS release files to the filesystem for Cowrie honeyfs
+    fs_dir = outdir / "fs"
+    os_files = ["/etc/os-release", "/etc/lsb-release", "/etc/redhat-release", "/etc/debian_version"]
+    copied_files = copy_files_to_fs(str(fs_dir), os_files)
 
     print("\n[✅] Cowrie profile package created successfully")
-    print(f"- fs: {outdir / 'fs'}")
+    print(f"- fs: {fs_dir}")
     print(f"- cfg: {outcfg}")
     print(f"- metadata: {metadata_file}")
+    if copied_files:
+        print(f"- copied OS files: {', '.join(copied_files)}")
 
 
 if __name__ == "__main__":
